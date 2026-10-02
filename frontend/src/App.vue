@@ -6,15 +6,18 @@ import { recordStore } from '@/stores/recordStore'
 import { sporeStore } from '@/stores/sporeStore'
 import { pointStore } from '@/stores/pointStore'
 import { identifyStore } from '@/stores/identifyStore'
+import { specimenStore } from '@/stores/specimenStore'
 
 const route = useRoute()
 const recordState = useStore(recordStore)
 const sporeState = useStore(sporeStore)
 const pointState = useStore(pointStore)
 const identifyState = useStore(identifyStore)
+const specimenState = useStore(specimenStore)
 
 const menus = [
   { path: '/atlas', label: '图谱总览', icon: 'Grid' },
+  { path: '/specimens', label: '标本保管', icon: 'Box' },
   { path: '/points', label: '采集点管理', icon: 'Location' },
   { path: '/identify', label: '鉴定工作页', icon: 'Search' },
   { path: '/compare', label: '条目对比', icon: 'Files' }
@@ -24,6 +27,7 @@ const activeMenu = computed(() => menus.find((item) => route.path.startsWith(ite
 
 const stats = computed(() => [
   { label: '条目', value: recordState.records.length },
+  { label: '实物份数', value: specimenState.specimens.length },
   { label: '孢子印', value: sporeState.spores.length },
   { label: '采集点', value: pointState.points.length },
   { label: '鉴定留痕', value: identifyState.logs.length }
@@ -34,6 +38,7 @@ onMounted(async () => {
   await sporeStore.getState().hydrate()
   await pointStore.getState().hydrate()
   await identifyStore.getState().hydrate()
+  await specimenStore.getState().hydrate()
 })
 </script>
 
@@ -64,7 +69,7 @@ onMounted(async () => {
     <el-container>
       <el-header class="header">
         <span class="crumb">{{ (route.meta.title as string) ?? '图谱' }}</span>
-        <span class="head-tip">采集点 → 形态描述 → 孢子印 → 鉴定结论，全过程留痕</span>
+        <span class="head-tip">采集点 → 形态描述 → 孢子印 → 鉴定结论全过程留痕；标本保管独立管每份实物柜位与出入库</span>
       </el-header>
       <el-main class="main">
         <p class="warn-strip">

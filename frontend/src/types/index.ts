@@ -25,3 +25,15 @@ export { VEGETATIONS, SUBSTRATES } from './point'
 export type { CollectPoint, Vegetation, Substrate } from './point'
 export { ID_BASES, ID_CONFIDENCES } from './identify'
 export type { IdentifyLog, IdBasis, IdConfidence } from './identify'
+export {
+  SPECIMEN_STATUSES,
+  SPECIMEN_EVENT_TYPES,
+  SpecimenRuleError
+} from './specimen'
+export type {
+  Specimen,
+  SpecimenStatus,
+  SpecimenEvent,
+  SpecimenEventType,
+  SpecimenCounts
+} from './specimen'

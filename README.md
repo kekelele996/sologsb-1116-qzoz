@@ -2,6 +2,11 @@
 
 面向蘑菇野外调查爱好者与地方菌物名录整理者，把「采集点 → 形态描述 → 孢子印 → 菌褶/菌管着生方式 → 鉴定结论」整理成可对照的图谱条目，解决形态特征记不全、描述口径不一、鉴定结论缺乏依据留痕的问题。**纯前端单页应用**，数据全部保存在浏览器 IndexedDB，不依赖任何后端服务或外部接口。
 
+两侧职责分开：
+
+- **采集人侧（图谱）**：管条目形态、孢子印与鉴定留痕，不碰实物状态；
+- **标本保管侧（保管）**：管每份实物的柜位、借出 / 归还 / 报废与出入库留痕，不碰形态。一个条目可对应多份实物，借出后图谱卡片与详情实时显示「在柜可用 / 借出中」份数。
+
 > 免责声明：本工具仅用于采集记录与形态整理，**内容不可作为食用依据**；鉴定须与权威图鉴和专业人员复核。
 
 ## 一、Docker 一键启动（推荐）
@@ -59,34 +64,46 @@ sologsb-1116/
 │   ├── nginx.conf              # try_files 前端路由回落 + gzip
 │   ├── public/favicon.svg
 │   └── src/
-│       ├── types/              # record.ts / spore.ts / point.ts / identify.ts / index.ts
-│       ├── stores/             # recordStore / sporeStore / pointStore / identifyStore（Zustand）
-│       ├── components/common/  # SporePrintSwatch / TraitsSummary / GillAttachmentTag / GeoPointForm
+│       ├── types/              # record.ts / spore.ts / point.ts / identify.ts / specimen.ts / index.ts
+│       ├── stores/             # recordStore / sporeStore / pointStore / identifyStore / specimenStore（Zustand）
+│       ├── components/common/  # SporePrintSwatch / TraitsSummary / GillAttachmentTag / GeoPointForm / RecordTraitsForm
 │       ├── hooks/              # usePersistentStore / useCandidateMatch
-│       ├── pages/              # AtlasPage / RecordDetailPage / PointsPage / IdentifyPage / ComparePage
+│       ├── pages/              # AtlasPage / RecordDetailPage / SpecimensPage / PointsPage / IdentifyPage / ComparePage
 │       ├── router/index.ts
-│       └── utils/              # spore.ts / export.ts / id.ts
+│       └── utils/              # spore.ts / specimen.ts / export.ts / id.ts
 ```
 
 ## 五、数据模型与存储
 
 | 模型 | 说明 | Dexie 表 |
 | --- | --- | --- |
-| FungusRecord 菌物条目 | 采集编号、暂定名、菌盖（直径/形状/边缘/质地）、菌肉厚度与变色反应、着生方式、菌褶密度、菌柄、菌环菌托、气味、关联树种 | `records` |
-| SporePrint 孢子印 | 印色、印形、获取时长、观察日期、样本干湿度 | `spores` |
+| FungusRecord 菌物条目 | 采集编号、暂定名、菌盖（直径/形状/边缘/质地）、菌肉厚度与变色反应、着生方式、菌褶密度、菌柄、菌环菌托、气味、关联树种（采集人侧） | `records` |
+| SporePrint 孢子印 | 印色、印形、获取时长、观察日期、样本干湿度（采集人侧） | `spores` |
 | CollectPoint 采集点 | 地点名、经纬度、海拔、植被类型、基物、伴生树种、日期、采集人 | `points` |
-| IdentifyLog 鉴定结论 | 结论学名、依据、参考图鉴与页码、置信度、是否待复核、复核人 | `identifies` |
+| IdentifyLog 鉴定结论 | 结论学名、依据、参考图鉴与页码、置信度、是否待复核、复核人（采集人侧） | `identifies` |
+| Specimen 标本实物 | 每份实物的份号、状态（在柜 / 借出中 / 已报废）、柜位号、借出与归还日期、借出人（保管侧，一个条目多份） | `specimens` |
+| SpecimenEvent 出入库留痕 | 入库 / 借出 / 归还 / 转柜 / 报废事件、日期、经办人、说明（保管侧） | `specimenEvents` |
 
 - 数据库名 `gbfungiguide`，`meta` 表保存 `schemaVersion`；
 - `version(2)` 升级迁移会为历史条目补齐「菌肉变色反应」默认值（不变色）；
+- `version(3)` 拆分标本保管侧，新增 `specimens` / `specimenEvents` 两张表；**旧数据没有实物记录，升级时为每个已入库条目先补一份「在柜」实物**（柜位顺序发放、附一条入库留痕，重复打开不重复补）；
+- 每次出入库都在**同一个 Dexie 事务**内同时写实物状态与留痕，保存失败按保管侧重试（业务规则错误不重试），不留半截；
 - 数据仅存于浏览器本地，容器无状态、不挂载命名卷。
+
+### 标本保管业务规则（当场拦截）
+
+- **柜位号唯一**：新建入库与转柜时，未报废实物的柜位不可重复；报废后柜位腾空可再用；
+- **借出**：仅「在柜」可借出，借出中 / 已报废拦下；借出期间保留原柜位；
+- **归还**：归还日期早于借出日期当场拦下；仅「借出中」可归还，归还后回到在柜并清空借出人；
+- **报废**：借出中须先归还；报废后不能再借出 / 转柜。
 
 ## 六、主要页面
 
 | 路由 | 功能 |
 | --- | --- |
-| `/atlas` | 图谱总览：网格卡片展示菌盖形态要点、孢子印色块与鉴定状态，按印色/着生方式筛选并新建条目 |
-| `/atlas/:id` | 条目详情：形态描述分区折叠、孢子印观察登记、采集点编辑（含坐标校验）、鉴定留痕 |
+| `/atlas` | 图谱总览：网格卡片展示菌盖形态要点、孢子印色块、鉴定状态与**在柜可用 / 借出中份数**，按印色/着生方式筛选并新建条目 |
+| `/atlas/:id` | 条目详情：形态描述分区折叠、补录 / 修改形态（只动条目）、孢子印观察登记、采集点编辑（含坐标校验）、鉴定留痕、**本条目各实物状态** |
+| `/specimens` | 标本保管：实物台账（条目 / 份号 / 柜位 / 状态 / 借出信息），入库、借出、归还、转柜、报废登记与出入库留痕时间线，支持按条目 / 状态 / 关键字过滤 |
 | `/points` | 采集点管理：经纬度格式校验、条目数与主要基物统计、删除前校验下级条目 |
 | `/identify` | 鉴定工作页：左侧勾选形态特征与印色，右侧实时给出候选名录排序，确认后落鉴定结论 |
 | `/compare` | 条目对比：并排最多 3 条，逐项对照菌盖/菌褶菌管/孢子印差异并高亮 |

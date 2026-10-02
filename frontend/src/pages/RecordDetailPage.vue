@@ -7,6 +7,7 @@ import { SPORE_COLORS } from '@/types'
 import GeoPointForm from '@/components/common/GeoPointForm.vue'
 import GillAttachmentTag from '@/components/common/GillAttachmentTag.vue'
 import SporePrintSwatch from '@/components/common/SporePrintSwatch.vue'
+import SpecimenCopies from '@/components/common/SpecimenCopies.vue'
 import TraitsSummary from '@/components/common/TraitsSummary.vue'
 import { useStore } from '@/hooks/usePersistentStore'
 import { recordStore } from '@/stores/recordStore'
@@ -189,6 +190,16 @@ async function removeSpore(): Promise<void> {
         <div class="form-actions">
           <el-button type="primary" @click="savePoint">保存采集点</el-button>
         </div>
+      </el-card>
+
+      <el-card shadow="never" class="block">
+        <template #header>
+          <div class="block-head">
+            <span>实物保管</span>
+            <el-tag size="small" effect="plain">保管侧管理柜位与借出归还，不动上方形态与鉴定信息</el-tag>
+          </div>
+        </template>
+        <SpecimenCopies :record-id="record.id" />
       </el-card>
 
       <el-card shadow="never" class="block">

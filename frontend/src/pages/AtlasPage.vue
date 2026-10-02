@@ -17,12 +17,14 @@ import {
 import GillAttachmentTag from '@/components/common/GillAttachmentTag.vue'
 import SporePrintSwatch from '@/components/common/SporePrintSwatch.vue'
 import TraitsSummary from '@/components/common/TraitsSummary.vue'
-import { useStore } from '@/hooks/usePersistentStore'
+import { useStore, db } from '@/hooks/usePersistentStore'
 import { useCandidateMatch, EMPTY_CRITERIA, type MatchCriteria } from '@/hooks/useCandidateMatch'
 import { recordStore } from '@/stores/recordStore'
 import { sporeStore } from '@/stores/sporeStore'
 import { pointStore } from '@/stores/pointStore'
 import { identifyStore } from '@/stores/identifyStore'
+import { copyStore } from '@/stores/copyStore'
+import { copyCountsOf } from '@/utils/copy'
 import { uid } from '@/utils/id'
 
 const router = useRouter()
@@ -30,6 +32,7 @@ const recordState = useStore(recordStore)
 const sporeState = useStore(sporeStore)
 const pointState = useStore(pointStore)
 const identifyState = useStore(identifyStore)
+const copyState = useStore(copyStore)
 
 const filterAttachment = ref<GillAttachment | ''>('')
 const filterColor = ref<SporeColor | ''>('')
@@ -183,13 +186,27 @@ async function submit(): Promise<void> {
 }
 
 async function removeRecord(record: FungusRecord): Promise<void> {
-  await ElMessageBox.confirm(`确认删除条目「${record.code}」？其孢子印与鉴定留痕一并清理`, '删除确认', {
+  await ElMessageBox.confirm(`确认删除条目「${record.code}」？其孢子印、鉴定留痕与实物份一并清理`, '删除确认', {
     type: 'warning'
   })
-  await sporeStore.getState().removeByRecord(record.id)
-  const logs = identifyState.logs.filter((item) => item.recordId === record.id)
-  await Promise.all(logs.map((item) => identifyStore.getState().remove(item.id)))
-  await recordStore.getState().remove(record.id)
+  const sporeIds = sporeState.spores.filter((item) => item.recordId === record.id).map((item) => item.id)
+  const identifyIds = identifyState.logs.filter((item) => item.recordId === record.id).map((item) => item.id)
+  const copyIds = copyState.copies.filter((item) => item.recordId === record.id).map((item) => item.id)
+  // 事务内清理条目及其全部关联数据，删除也不留半截
+  await db.transaction('rw', [db.records, db.spores, db.identifies, db.copies], async () => {
+    await Promise.all([
+      ...sporeIds.map((id) => db.spores.delete(id)),
+      ...identifyIds.map((id) => db.identifies.delete(id)),
+      ...copyIds.map((id) => db.copies.delete(id)),
+      db.records.delete(record.id)
+    ])
+  })
+  await Promise.all([
+    sporeStore.getState().hydrate(),
+    identifyStore.getState().hydrate(),
+    copyStore.getState().hydrate(),
+    recordStore.getState().hydrate()
+  ])
   ElMessage.success('条目已删除')
 }
 </script>
@@ -248,6 +265,26 @@ async function removeRecord(record: FungusRecord): Promise<void> {
           <el-tag size="small" effect="plain">{{ item.record.capTexture }}</el-tag>
           <el-tag size="small" effect="plain">直径 {{ item.record.capDiameter }} cm</el-tag>
           <el-tag size="small" effect="plain">菌肉 {{ item.record.fleshReaction }}</el-tag>
+        </div>
+        <div class="copy-line">
+          <el-tag size="small" type="success" effect="plain">
+            在柜 {{ copyCountsOf(copyState.copies, item.record.id).available }} 份
+          </el-tag>
+          <el-tag
+            size="small"
+            :type="copyCountsOf(copyState.copies, item.record.id).lent > 0 ? 'warning' : 'info'"
+            effect="plain"
+          >
+            借出中 {{ copyCountsOf(copyState.copies, item.record.id).lent }} 份
+          </el-tag>
+          <el-tag
+            v-if="copyCountsOf(copyState.copies, item.record.id).scrapped > 0"
+            size="small"
+            type="info"
+            effect="plain"
+          >
+            报废 {{ copyCountsOf(copyState.copies, item.record.id).scrapped }} 份
+          </el-tag>
         </div>
         <TraitsSummary :record="item.record" :spore="item.spore" :default-open="['gill']" class="traits" />
         <div class="ident-line">
@@ -453,6 +490,12 @@ async function removeRecord(record: FungusRecord): Promise<void> {
   flex-wrap: wrap;
   gap: 6px;
   margin: 10px 0;
+}
+.copy-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 10px;
 }
 .traits {
   margin-bottom: 10px;

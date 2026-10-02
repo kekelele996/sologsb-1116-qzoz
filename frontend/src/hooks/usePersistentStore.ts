@@ -1,22 +1,24 @@
 import { onUnmounted, reactive } from 'vue'
 import type { StoreApi } from 'zustand/vanilla'
 import Dexie, { type Table } from 'dexie'
-import type { CollectPoint, FungusRecord, IdentifyLog, SporePrint } from '@/types'
+import type { CollectPoint, FungusRecord, IdentifyLog, SpecimenCopy, SporePrint } from '@/types'
+import { uid } from '@/utils/id'
 
 /** IndexedDB 数据结构版本号 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
   value: number
 }
 
-/** Dexie 封装：条目 / 孢子印 / 采集点 / 鉴定结论 四张表 + 元数据表 */
+/** Dexie 封装：条目 / 孢子印 / 采集点 / 鉴定结论 / 实物份 五张表 + 元数据表 */
 class FungiGuideDb extends Dexie {
   records!: Table<FungusRecord, string>
   spores!: Table<SporePrint, string>
   points!: Table<CollectPoint, string>
   identifies!: Table<IdentifyLog, string>
+  copies!: Table<SpecimenCopy, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
@@ -29,7 +31,7 @@ class FungiGuideDb extends Dexie {
       meta: 'key'
     })
     // v2：新增「菌肉变色反应」字段，迁移时为历史条目补齐默认值（不变色）
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         records: 'id, code, pointId, attachment, capShape',
         spores: 'id, recordId, color, observeDate',
@@ -46,6 +48,36 @@ class FungiGuideDb extends Dexie {
               record.fleshReaction = '不变色'
             }
           })
+      })
+    // v3：实物份从条目形态中拆出独立管理；迁移时为每个已入库条目补一份在柜实物
+    this.version(SCHEMA_VERSION)
+      .stores({
+        records: 'id, code, pointId, attachment, capShape',
+        spores: 'id, recordId, color, observeDate',
+        points: 'id, name, substrate, vegetation',
+        identifies: 'id, recordId, conclusion, date',
+        copies: 'id, recordId, status, cabinetNo',
+        meta: 'key'
+      })
+      .upgrade(async (tx) => {
+        const records = await tx.table<FungusRecord, string>('records').toArray()
+        if (records.length === 0) return
+        const today = new Date().toISOString().slice(0, 10)
+        const copies: SpecimenCopy[] = records.map((record, index) => ({
+          id: uid('cpy'),
+          recordId: record.id,
+          copyNo: `${record.code}-1`,
+          cabinetNo: `A-${String(index + 1).padStart(3, '0')}`,
+          status: '在柜',
+          lendDate: null,
+          returnDate: null,
+          lentTo: '',
+          lendNote: '',
+          scrapDate: null,
+          scrapReason: '',
+          stockedDate: today
+        }))
+        await tx.table<SpecimenCopy, string>('copies').bulkPut(copies)
       })
   }
 }
@@ -245,6 +277,52 @@ export async function seedDemoData(): Promise<void> {
       needReview: false,
       reviewer: '祁野',
       date: today
+    }
+  ])
+
+  const lendDate = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10)
+  await db.copies.bulkPut([
+    {
+      id: 'cpy_001',
+      recordId: 'rec_001',
+      copyNo: 'BHS-2026-001-1',
+      cabinetNo: 'A-001',
+      status: '在柜',
+      lendDate: null,
+      returnDate: null,
+      lentTo: '',
+      lendNote: '',
+      scrapDate: null,
+      scrapReason: '',
+      stockedDate: today
+    },
+    {
+      id: 'cpy_002',
+      recordId: 'rec_002',
+      copyNo: 'BHS-2026-002-1',
+      cabinetNo: 'A-002',
+      status: '借出中',
+      lendDate,
+      returnDate: null,
+      lentTo: '祁野',
+      lendNote: '标本比对借用',
+      scrapDate: null,
+      scrapReason: '',
+      stockedDate: today
+    },
+    {
+      id: 'cpy_003',
+      recordId: 'rec_003',
+      copyNo: 'YLS-2026-001-1',
+      cabinetNo: 'A-003',
+      status: '在柜',
+      lendDate: null,
+      returnDate: null,
+      lentTo: '',
+      lendNote: '',
+      scrapDate: null,
+      scrapReason: '',
+      stockedDate: today
     }
   ])
 }

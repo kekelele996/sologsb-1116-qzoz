@@ -21,6 +21,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '采集点管理' }
   },
   {
+    path: '/storage',
+    name: 'storage',
+    component: () => import('@/pages/StoragePage.vue'),
+    meta: { title: '标本保管' }
+  },
+  {
     path: '/identify',
     name: 'identify',
     component: () => import('@/pages/IdentifyPage.vue'),

@@ -6,15 +6,18 @@ import { recordStore } from '@/stores/recordStore'
 import { sporeStore } from '@/stores/sporeStore'
 import { pointStore } from '@/stores/pointStore'
 import { identifyStore } from '@/stores/identifyStore'
+import { copyStore } from '@/stores/copyStore'
 
 const route = useRoute()
 const recordState = useStore(recordStore)
 const sporeState = useStore(sporeStore)
 const pointState = useStore(pointStore)
 const identifyState = useStore(identifyStore)
+const copyState = useStore(copyStore)
 
 const menus = [
   { path: '/atlas', label: '图谱总览', icon: 'Grid' },
+  { path: '/storage', label: '标本保管', icon: 'Box' },
   { path: '/points', label: '采集点管理', icon: 'Location' },
   { path: '/identify', label: '鉴定工作页', icon: 'Search' },
   { path: '/compare', label: '条目对比', icon: 'Files' }
@@ -26,7 +29,9 @@ const stats = computed(() => [
   { label: '条目', value: recordState.records.length },
   { label: '孢子印', value: sporeState.spores.length },
   { label: '采集点', value: pointState.points.length },
-  { label: '鉴定留痕', value: identifyState.logs.length }
+  { label: '鉴定留痕', value: identifyState.logs.length },
+  { label: '实物在柜', value: copyState.copies.filter((item) => item.status === '在柜').length },
+  { label: '实物借出', value: copyState.copies.filter((item) => item.status === '借出中').length }
 ])
 
 onMounted(async () => {
@@ -34,6 +39,7 @@ onMounted(async () => {
   await sporeStore.getState().hydrate()
   await pointStore.getState().hydrate()
   await identifyStore.getState().hydrate()
+  await copyStore.getState().hydrate()
 })
 </script>
 
